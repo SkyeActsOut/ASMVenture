@@ -568,6 +568,7 @@ PauseModeFlag         = $07c6
 GroundMusicHeaderOfs  = $07c7
 AltRegContentFlag     = $07ca
 
+
 ;-------------------------------------------------------------------------------------
 ;CONSTANTS
 
@@ -691,6 +692,58 @@ GameOverModeValue     = 3
 
 ;-------------------------------------------------------------------------------------
 
+; RPG CODE
+; SKYMOCHA VARS
+; USING 07d0+ FOR LEVELING TO AVOID MEMORY WIPES
+SWAP                  = $076c
+PlayerLevel_D1        = $07d0
+PlayerLevel_D2        = $07d1
+PlayerEXP             = $07d2
+
+; MACROS & FUNCTIONS
+; Sets the level of the player and their EXP count
+.macro SetLevel  d1, d2, exp
+       pha ; Pushes the previous A for storage
+       lda       d2 
+       sta PlayerLevel_D2
+       lda       d1
+       sta PlayerLevel_D1
+       lda       exp
+       sta PlayerEXP
+       pla ; Pulls the accumulator off the stack
+.endmacro
+
+; Adds one to the players Level
+.macro LevelUp
+      pha
+      lda PlayerLevel_D2
+      clc
+      adc #1
+      ; cmp #10 ; Checks to see if the single digit is above 9
+      ; beq CarryLevel 
+      sta PlayerLevel_D2
+      pla
+.endmacro
+      
+CarryLevel:
+      lda PlayerLevel_D1
+      clc
+      adc #1
+      sta PlayerLevel_D1
+      lda #0
+      sta PlayerLevel_D2
+      pla
+
+; Adds AXP to a the PlayerEXP address
+.macro AddEXP   amnt
+       pha
+       lda amnt
+       sta PlayerEXP
+       pla
+       LevelUp ; Test Level Up on any EXP gain
+.endmacro
+
+
 Start:
              sei                          ;pretty standard 6502 type init here
              cld
@@ -704,8 +757,7 @@ VBlank2:     lda PPU_STATUS
              bpl VBlank2
              ldy #ColdBootOffset          ;load default cold boot pointer
              ldx #$05                     ;this is where we check for a warm boot
-WBootCheck:  lda TopScoreDisplay,x        ;check each score digit in the top score
-             cmp #10                      ;to see if we have a valid digit
+WBootCheck:  cmp #10                      ;to see if we have a valid digit
              bcs ColdBoot                 ;if not, give up and proceed with cold boot
              dex
              bpl WBootCheck
@@ -804,7 +856,7 @@ InitBuffer:    ldx VRAM_Buffer_Offset,y
                bcs PauseSkip
                lda TimerControl          ;if master timer control not set, decrement
                beq DecTimers             ;all frame and interval timers
-               dec TimerControl
+               dec TimerControl 
                bne NoDecTimers
 DecTimers:     ldx #$14                  ;load end offset for end of frame timers
                dec IntervalTimerControl  ;decrement interval timer control,
@@ -1069,9 +1121,7 @@ StartWorld1:  jsr LoadAreaPointer
               sta DemoTimer
               ldx #$17
               lda #$00
-InitScores:   sta ScoreAndCoinDisplay,x   ;clear player scores and coin displays
-              dex
-              bpl InitScores
+InitScores:   rts
 ExitMenu:     rts
 GoContinue:   sta WorldNumber             ;start both players at the first area
               sta OffScr_WorldNumber      ;of the previously saved world number
@@ -1449,7 +1499,6 @@ BackgroundColors:
 
 PlayerColors:
       .byte $22, $16, $27, $18 ;mario's colors
-      .byte $22, $30, $27, $19 ;luigi's colors
       .byte $22, $37, $27, $16 ;fiery (used by both)
 
 GetBackgroundColor:
@@ -1655,7 +1704,8 @@ IncModeTask_B: inc OperMode_Task  ;move onto next mode
 
 GameText:
 TopStatusBarLine:
-  .byte $20, $43, $05, $16, $0a, $1b, $12, $18 ; "MARIO"
+  .byte $20, $41, $06, $17, $12, $0c, $18, $15, $0e ; "NAME"
+  .byte $20, $61, $6, $15, $1f, $15, $24, 249, 250 ; "LVL xx"
   .byte $20, $52, $0b, $20, $18, $1b, $15, $0d ; "WORLD  TIME"
   .byte $24, $24, $1d, $12, $16, $0e
   .byte $20, $68, $05, $00, $24, $24, $2e, $29 ; score trailing digit and coin display
@@ -1672,14 +1722,14 @@ WorldLivesDisplay:
   .byte $23, $dc, $01, $ba ; attribute table data for crown if more than 9 lives
   .byte $ff
 
-TwoPlayerTimeUp:
-  .byte $21, $cd, $05, $16, $0a, $1b, $12, $18 ; "MARIO"
+; TwoPlayerTimeUp:
+;   .byte $21, $cd, $05, $16, $0a, $1b, $12, $18 ; "MARIO"
 OnePlayerTimeUp:
   .byte $22, $0c, $07, $1d, $12, $16, $0e, $24, $1e, $19 ; "TIME UP"
   .byte $ff
 
-TwoPlayerGameOver:
-  .byte $21, $cd, $05, $16, $0a, $1b, $12, $18 ; "MARIO"
+; TwoPlayerGameOver:
+;   .byte $21, $cd, $05, $16, $0a, $1b, $12, $18 ; "MARIO"
 OnePlayerGameOver:
   .byte $22, $0b, $09, $10, $0a, $16, $0e, $24 ; "GAME OVER"
   .byte $18, $1f, $0e, $1b
@@ -1696,8 +1746,8 @@ WarpZoneWelcome:
   .byte $27, $e1, $45, $aa
   .byte $ff
 
-LuigiName:
-  .byte $15, $1e, $12, $10, $12    ; "LUIGI", no address or length
+;LuigiName:
+;  .byte $15, $1e, $12, $10, $12    ; "LUIGI", no address or length
 
 WarpZoneNumbers:
   .byte $04, $03, $02, $00         ; warp zone numbers, note spaces on middle
@@ -1707,8 +1757,8 @@ WarpZoneNumbers:
 GameTextOffsets:
   .byte TopStatusBarLine-GameText, TopStatusBarLine-GameText
   .byte WorldLivesDisplay-GameText, WorldLivesDisplay-GameText
-  .byte TwoPlayerTimeUp-GameText, OnePlayerTimeUp-GameText
-  .byte TwoPlayerGameOver-GameText, OnePlayerGameOver-GameText
+;   .byte TwoPlayerTimeUp-GameText, OnePlayerTimeUp-GameText
+;   .byte TwoPlayerGameOver-GameText, OnePlayerGameOver-GameText
   .byte WarpZoneWelcome-GameText, WarpZoneWelcome-GameText
 
 WriteGameText:
@@ -1725,13 +1775,25 @@ Chk2Players:   lda NumberOfPlayers      ;check for number of players
                iny                      ;otherwise increment offset by one to not print name
 LdGameText:    ldx GameTextOffsets,y    ;get offset to message we want to print
                ldy #$00
-GameTextLoop:  lda GameText,x           ;load message data
+; Loops through and loads/displays all the data in GameText
+GameTextLoop:  
+               lda GameText,x           ;load message data
                cmp #$ff                 ;check for terminator
                beq EndGameText          ;branch to end text if found
-               sta VRAM_Buffer1,y       ;otherwise write data to buffer
+               cmp #249                 ;if the character is 249 or
+               beq GetLevel_D1          ;250 then replace it with the first
+               cmp #250                 ;and second digit of the player level
+               beq GetLevel_D2
+               jmp DisplayText
+; Displays the text on the accumulator
+DisplayText:   sta VRAM_Buffer1,y       ;otherwise write data to buffer
                inx                      ;and increment increment
                iny
                bne GameTextLoop         ;do this for 256 bytes if no terminator found
+GetLevel_D1:   lda PlayerLevel_D1
+               jmp DisplayText
+GetLevel_D2:   lda PlayerLevel_D2
+               jmp DisplayText 
 EndGameText:   lda #$00                 ;put null terminator at end
                sta VRAM_Buffer1,y
                pla                      ;pull original text number from stack
@@ -1770,10 +1832,10 @@ CheckPlayerName:
 ChkLuigi:    lsr
              bcc ExitChkName        ;if mario is current player, do not change the name
              ldy #$04
-NameLoop:    lda LuigiName,y        ;otherwise, replace "MARIO" with "LUIGI"
-             sta VRAM_Buffer1+3,y
-             dey
-             bpl NameLoop           ;do this until each letter is replaced
+; NameLoop:    lda LuigiName,y        ;otherwise, replace "MARIO" with "LUIGI"
+;              sta VRAM_Buffer1+3,y
+;              dey
+;              bpl NameLoop           ;do this until each letter is replaced
 ExitChkName: rts
 
 PrintWarpZoneNumbers:
@@ -2594,7 +2656,7 @@ DigitPLoop:  lda DisplayDigits,y      ;write digits to the buffer
              inx                      ;increment buffer pointer by 3
              inx
              inx
-             stx VRAM_Buffer1_Offset  ;store it in case we want to use it again
+            ;  stx VRAM_Buffer1_Offset  ;store it in case we want to use it again
 ExitOutputN: rts
 
 ;-------------------------------------------------------------------------------------
@@ -2610,10 +2672,11 @@ AddModLoop: lda DigitModifier,x       ;load digit amount to increment
             bmi BorrowOne             ;if result is a negative number, branch to subtract
             cmp #10
             bcs CarryOne              ;if digit greater than $09, branch to add
-StoreNewD:  sta DisplayDigits,y       ;store as new score or game timer digit
-            dey                       ;move onto next digits in score or game timer
-            dex                       ;and digit amounts to increment
-            bpl AddModLoop            ;loop back if we're not done yet
+StoreNewD:  rts
+            ; sta DisplayDigits,y       ;store as new score or game timer digit
+            ; dey                       ;move onto next digits in score or game timer
+            ; dex                       ;and digit amounts to increment
+            ; bpl AddModLoop            ;loop back if we're not done yet
 EraseDMods: lda #$00                  ;store zero here
             ldx #$06                  ;start with the last digit
 EraseMLoop: sta DigitModifier-1,x     ;initialize the digit amounts to increment
@@ -2631,27 +2694,9 @@ CarryOne:   sec                       ;subtract ten from our digit to make it a
 ;-------------------------------------------------------------------------------------
 
 UpdateTopScore:
-      ldx #$05          ;start with mario's score
-      jsr TopScoreCheck
-      ldx #$0b          ;now do luigi's score
-
-TopScoreCheck:
-              ldy #$05                 ;start with the lowest digit
-              sec
-GetScoreDiff: lda PlayerScoreDisplay,x ;subtract each player digit from each high score digit
-              sbc TopScoreDisplay,y    ;from lowest to highest, if any top score digit exceeds
-              dex                      ;any player digit, borrow will be set until a subsequent
-              dey                      ;subtraction clears it (player digit is higher than top)
-              bpl GetScoreDiff
-              bcc NoTopSc              ;check to see if borrow is still set, if so, no new high score
-              inx                      ;increment X and Y once to the start of the score
-              iny
-CopyScore:    lda PlayerScoreDisplay,x ;store player's score digits into high score memory area
-              sta TopScoreDisplay,y
-              inx
-              iny
-              cpy #$06                 ;do this until we have stored them all
-              bcc CopyScore
+              rts
+GetScoreDiff: rts
+CopyScore:    rts
 NoTopSc:      rts
 
 ;-------------------------------------------------------------------------------------
@@ -2669,12 +2714,14 @@ InitializeGame:
              ldy #$6f              ;clear all memory as in initialization procedure,
              jsr InitializeMemory  ;but this time, clear only as far as $076f
              ldy #$1f
+             SetLevel #0, #1, #0
 ClrSndLoop:  sta SoundMemory,y     ;clear out memory used
              dey                   ;by the sound engines
              bpl ClrSndLoop
              lda #$18              ;set demo timer
              sta DemoTimer
              jsr LoadAreaPointer
+             
 
 InitializeArea:
                ldy #$4b                 ;clear all memory again, only as far as $074b
@@ -7129,12 +7176,13 @@ GetSBNybbles:
       lda StatusBarNybbles,y ;get nybbles based on player, use to update score and coins
 
 UpdateNumber:
-        jsr PrintStatusBarNumbers ;print status bar numbers based on nybbles, whatever they be
-        ldy VRAM_Buffer1_Offset
-        lda VRAM_Buffer1-6,y      ;check highest digit of score
-        bne NoZSup                ;if zero, overwrite with space tile for zero suppression
-        lda #$24
-        sta VRAM_Buffer1-6,y
+      rts
+      ;   jsr PrintStatusBarNumbers ;print status bar numbers based on nybbles, whatever they be
+      ;   ldy VRAM_Buffer1_Offset
+      ;   lda VRAM_Buffer1-6,y      ;check highest digit of score
+      ;   bne NoZSup                ;if zero, overwrite with space tile for zero suppression
+      ;   lda #$24
+      ;   sta VRAM_Buffer1-6,y
 NoZSup: ldx ObjectOffset          ;get enemy object buffer offset
         rts
 
@@ -9381,6 +9429,7 @@ ChkKillGoomba:
         lda Enemy_ID,x
         cmp #Goomba           ;check for goomba object
         bne NKGmba            ;branch if not found
+        AddEXP #1             ; Adds 1 exp on Goomba kill
         jsr EraseEnemyObject  ;otherwise, kill this goomba object
 NKGmba: rts                   ;leave!
 
@@ -10523,7 +10572,7 @@ EndAreaPoints:
          ldy #$0b               ;load offset for mario's score by default
          lda CurrentPlayer      ;check player on the screen
          beq ELPGive            ;if mario, do not change
-         ldy #$11               ;otherwise load offset for luigi's score
+;         ldy #$11               ;otherwise load offset for luigi's score
 ELPGive: jsr DigitsMathRoutine  ;award 50 points per game timer interval
          lda CurrentPlayer      ;get player on the screen (or 500 points per
          asl                    ;fireworks explosion if branched here from there)
